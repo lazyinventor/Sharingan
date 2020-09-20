@@ -2,134 +2,176 @@ import cv2
 import numpy as np;
 import dlib
 from math import hypot
+import pyautogui
+def get_horizontal_gaze_ratio(eye_points, facial_landmarks):
+    left_eye_region = np.array([(facial_landmarks.part(eye_points[0]).x, facial_landmarks.part(eye_points[0]).y),
+                                (facial_landmarks.part(eye_points[1]).x, facial_landmarks.part(eye_points[1]).y),
+                                (facial_landmarks.part(eye_points[2]).x, facial_landmarks.part(eye_points[2]).y),
+                                (facial_landmarks.part(eye_points[3]).x, facial_landmarks.part(eye_points[3]).y),
+                                (facial_landmarks.part(eye_points[4]).x, facial_landmarks.part(eye_points[4]).y),
+                                (facial_landmarks.part(eye_points[5]).x, facial_landmarks.part(eye_points[5]).y)], np.int32)
+    # cv2.polylines(frame, [left_eye_region], True, (0, 0, 255), 2)
+
+    height, width, _ = frame.shape
+    mask = np.zeros((height, width), np.uint8)
+    cv2.polylines(mask, [left_eye_region], True, 255, 2)
+    cv2.fillPoly(mask, [left_eye_region], 255)
+    eye = cv2.bitwise_and(gray_scale_frame, gray_scale_frame, mask=mask)
+    min_x = np.min(left_eye_region[:, 0])
+    max_x = np.max(left_eye_region[:, 0])
+    min_y = np.min(left_eye_region[:, 1])
+    max_y = np.max(left_eye_region[:, 1])
+
+    gray_eye = eye[min_y: max_y, min_x: max_x]
+    _, threshold_eye = cv2.threshold(gray_eye, 70, 255, cv2.THRESH_BINARY)
+    height, width = threshold_eye.shape
+    left_side_threshold = threshold_eye[0: height, 0: int(width / 2)]
+    left_side_white = cv2.countNonZero(left_side_threshold)
+    right_side_threshold = threshold_eye[0: height, int(width / 2): width]
+    right_side_white = cv2.countNonZero(right_side_threshold)
+    if left_side_white == 0:
+        gaze_ratio = 1
+    elif right_side_white == 0:
+        gaze_ratio = 5
+    else:
+        gaze_ratio = left_side_white / right_side_white
+    return gaze_ratio
+
+def get_vertical_gaze_ratio(eye_points, facial_landmarks):
+    left_eye_region = np.array([(facial_landmarks.part(eye_points[0]).x, facial_landmarks.part(eye_points[0]).y),
+                                (facial_landmarks.part(eye_points[1]).x, facial_landmarks.part(eye_points[1]).y),
+                                (facial_landmarks.part(eye_points[2]).x, facial_landmarks.part(eye_points[2]).y),
+                                (facial_landmarks.part(eye_points[3]).x, facial_landmarks.part(eye_points[3]).y),
+                                (facial_landmarks.part(eye_points[4]).x, facial_landmarks.part(eye_points[4]).y),
+                                (facial_landmarks.part(eye_points[5]).x, facial_landmarks.part(eye_points[5]).y)], np.int32)
+    # cv2.polylines(frame, [left_eye_region], True, (0, 0, 255), 2)
+
+    height, width, _ = frame.shape
+    mask = np.zeros((height, width), np.uint8)
+    cv2.polylines(mask, [left_eye_region], True, 255, 2)
+    cv2.fillPoly(mask, [left_eye_region], 255)
+    eye = cv2.bitwise_and(gray_scale_frame, gray_scale_frame, mask=mask)
+
+    min_x = np.min(left_eye_region[:, 0])
+    max_x = np.max(left_eye_region[:, 0])
+    min_y = np.min(left_eye_region[:, 1])
+    max_y = np.max(left_eye_region[:, 1])
+
+    gray_eye = eye[min_y: max_y, min_x: max_x]
+    _, threshold_eye = cv2.threshold(gray_eye, 100, 255, cv2.THRESH_BINARY)
+    height, width = threshold_eye.shape
+    left_side_threshold = threshold_eye[0: height//2, 0: width]
+    left_side_white = cv2.countNonZero(left_side_threshold)
+    right_side_threshold = threshold_eye[height//2: height,0: width]
+    right_side_white = cv2.countNonZero(right_side_threshold)
+    if left_side_white == 0:
+        gaze_ratio = 1
+    elif right_side_white == 0:
+        gaze_ratio = 5
+    else:
+        gaze_ratio = left_side_white / right_side_white
+        left_side_threshold = cv2.resize(left_side_threshold,None,fx=8,fy=8)
+        right_side_threshold = cv2.resize(right_side_threshold, None, fx=8, fy=8)
+        cv2.imshow("top",left_side_threshold)
+        cv2.imshow("bottom",right_side_threshold)
+    return gaze_ratio
+def get_blinking_ratio(eye_points, facial_landmarks):
+    left_point = (facial_landmarks.part(eye_points[0]).x, facial_landmarks.part(eye_points[0]).y)
+    right_point = (facial_landmarks.part(eye_points[3]).x, facial_landmarks.part(eye_points[3]).y)
+    center_top = midpoint(facial_landmarks.part(eye_points[1]), facial_landmarks.part(eye_points[2]))
+    center_bottom = midpoint(facial_landmarks.part(eye_points[5]), facial_landmarks.part(eye_points[4]))
+
+    #hor_line = cv2.line(frame, left_point, right_point, (0, 255, 0), 2)
+    #ver_line = cv2.line(frame, center_top, center_bottom, (0, 255, 0), 2)
+
+    hor_line_lenght = hypot((left_point[0] - right_point[0]), (left_point[1] - right_point[1]))
+    ver_line_lenght = hypot((center_top[0] - center_bottom[0]), (center_top[1] - center_bottom[1]))
+
+    ratio = hor_line_lenght / ver_line_lenght
+    return ratio
+
 def midpoint(p1,p2):
-    """Mid point for two points"""
-    return (int((p1.x+p2.x)/2),int((p1.y+p2.y)/2))
+    return (int((p1.x+p2.x)/2), int((p1.y+p2.y)/2))
 
-def eye_trace(startpt,endpt,landmarks):
-    """Trace the structure between the points"""
-    for i in range(startpt,endpt):
-        #cv2.circle(frame,(landmarks.part(i).x,landmarks.part(i).y),1,(0,0,255),2)
-        pass
-
-clearence=40
-cap= cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0)
 detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+x,y=0,0
+pyautogui.FAILSAFE=False
+speed=19
 while True:
-    ret,frame=cap.read()
-    frame = cv2.flip(frame,1)
-    grayScale=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-    faces=detector(grayScale)
+    ret,frame = cap.read()
+    gray_scale_frame = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+    faces = detector(gray_scale_frame)
     for face in faces:
-            landmarks=predictor(grayScale,face)
-            #plotting  left 36-41
-            eye_trace(36,42,landmarks)
-            #cv2.line(frame,((landmarks.part(36).x,landmarks.part(36).y)),(landmarks.part(39).x,landmarks.part(39).y),[0,255,0],2)
-            center_top_l= midpoint(landmarks.part(37),landmarks.part(38))
-            center_bottom_l = midpoint(landmarks.part(40),landmarks.part(41))
-            #cv2.line(frame,center_top_l,center_bottom_l,(0,255,0),2)
-            
-            hor_line_len_l =hypot((landmarks.part(36).x - landmarks.part(39).x),(landmarks.part(36).y-landmarks.part(39).y))
-            ver_line_len_l = hypot(center_top_l[0]-center_bottom_l[0],center_top_l[1]-center_bottom_l[1])
-            ratio_left = hor_line_len_l/ver_line_len_l
-            
-            #plotting  right 42-47
-            eye_trace(42,48,landmarks)
-            cv2.line(frame,((landmarks.part(42).x,landmarks.part(42).y)),(landmarks.part(45).x,landmarks.part(45).y),[0,255,0],2)
-            center_topr= midpoint(landmarks.part(43),landmarks.part(44))
-            center_bottomr =midpoint(landmarks.part(47),landmarks.part(46))
-            cv2.line(frame,center_topr,center_bottomr,(0,255,0),2)
-            hor_line_len_r =hypot((landmarks.part(42).x - landmarks.part(45).x),(landmarks.part(42).y-landmarks.part(45).y))
-            ver_line_len_r = hypot(center_topr[0]-center_bottomr[0],center_topr[1]-center_bottomr[1])
-            ratio_right = hor_line_len_r/ver_line_len_r
+        #draw rect
+        x1,y1=face.left(),face.top()
+        x2,y2=face.right(),face.bottom()
+        cv2.rectangle(frame,(x1,y1),(x2,y2),[0,255,0],2)
+        landmarks = predictor(gray_scale_frame,face)
+        #cv2.circle(frame,(landmarks.part(36).x,landmarks.part(36).y),1,[0,0,255],1)
+        #cv2.circle(frame, (landmarks.part(39).x, landmarks.part(39).y), 1, [0, 0, 255], 1)
+        #her_line = cv2.line(frame,(landmarks.part(36).x,landmarks.part(36).y), (landmarks.part(39).x, landmarks.part(39).y),[0,255,0],2)
+        #cv2.circle(frame, midpoint(landmarks.part(37),landmarks.part(38)), 1, [0, 0, 255], 1)
+        #cv2.circle(frame, midpoint(landmarks.part(40),landmarks.part(41)), 1, [0, 0, 255], 1)
+        #ver_line = cv2.line(frame, midpoint(landmarks.part(37),landmarks.part(38)), midpoint(landmarks.part(40),landmarks.part(41)),[0, 255, 0], 2)
 
-            if((ratio_left+ratio_right)/2>5.5):
-                cv2.putText(frame,"Blinking",(50,150),cv2.FONT_HERSHEY_SIMPLEX,3,())
+        left_eye_ratio = get_blinking_ratio([36, 37, 38, 39, 40, 41], landmarks)
+        right_eye_ratio = get_blinking_ratio([42, 43, 44, 45, 46, 47], landmarks)
+        blinking_ratio = (left_eye_ratio + right_eye_ratio) / 2
+        if(left_eye_ratio>5.6):
+            cv2.putText(frame, "L - BLINKING", (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 7, (255, 0, 0))
+            pyautogui.click()
+        #if blinking_ratio > 5.7:
+         #   cv2.putText(frame, "BLINKING", (50, 150),cv2.FONT_HERSHEY_SIMPLEX, 7, (255, 0, 0))
+        # left_eye_region = np.array([(landmarks.part(36).x,landmarks.part(36).y),
+        #                             (landmarks.part(37).x,landmarks.part(37).y),
+        #                             (landmarks.part(38).x,landmarks.part(38).y),
+        #                             (landmarks.part(39).x,landmarks.part(39).y),
+        #                             (landmarks.part(40).x,landmarks.part(40).y),
+        #                             (landmarks.part(41).x,landmarks.part(41).y)])
+        # right_eye_region = np.array([(landmarks.part(42).x, landmarks.part(42).y),
+        #                              (landmarks.part(43).x, landmarks.part(43).y),
+        #                              (landmarks.part(44).x, landmarks.part(44).y),
+        #                              (landmarks.part(45).x, landmarks.part(45).y),
+        #                              (landmarks.part(46).x, landmarks.part(46).y),
+        #                              (landmarks.part(47).x, landmarks.part(47).y)])
+        # cv2.polylines(frame,[left_eye_region],True,[0,255,0],1)
+        # cv2.polylines(frame, [right_eye_region], True, [0, 255, 0], 1)
 
-            left_eye_region = np.array([(landmarks.part(36).x,landmarks.part(36).y),
-                                        (landmarks.part(37).x,landmarks.part(37).y),
-                                        (landmarks.part(38).x,landmarks.part(38).y),
-                                        (landmarks.part(39).x,landmarks.part(39).y),
-                                        (landmarks.part(40).x,landmarks.part(40).y),
-                                        (landmarks.part(41).x,landmarks.part(41).y)])
+        horizontal_gaze_ratio_left_eye = get_horizontal_gaze_ratio([36, 37, 38, 39, 40, 41], landmarks)
+        horizontal_gaze_ratio_right_eye = get_horizontal_gaze_ratio([42, 43, 44, 45, 46, 47], landmarks)
+        vertical_gaze_ratio_left_eye = get_vertical_gaze_ratio([36, 37, 38, 39, 40, 41], landmarks)
+        vertical_gaze_ratio_right_eye = get_vertical_gaze_ratio([42, 43, 44, 45, 46, 47], landmarks)
+        vertical_gaze_ratio = (vertical_gaze_ratio_left_eye + vertical_gaze_ratio_right_eye) / 2
+        horizontal_gaze_ratio = (horizontal_gaze_ratio_right_eye + horizontal_gaze_ratio_left_eye) / 2
+        print(vertical_gaze_ratio_left_eye)
+        if horizontal_gaze_ratio <= 1:
+            cv2.putText(frame, "RIGHT", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            x+=speed
 
-            right_eye_region = np.array([(landmarks.part(42).x,landmarks.part(42).y),
-                                        (landmarks.part(43).x,landmarks.part(43).y),
-                                        (landmarks.part(44).x,landmarks.part(44).y),
-                                        (landmarks.part(45).x,landmarks.part(45).y),
-                                        (landmarks.part(46).x,landmarks.part(46).y),
-                                        (landmarks.part(47).x,landmarks.part(47).y)])
+        elif 1 < horizontal_gaze_ratio < 1.7:
+            cv2.putText(frame, "CENTER", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            x=x
 
-            #cv2.polylines(frame,[left_eye_region],True,(0,0,255),2)
-            #print(left_eye_region)
-            min_x = np.min(left_eye_region[: ,0])
-            max_x = np.max(left_eye_region[: ,0])
-            min_y = np.min(left_eye_region[: ,1])
-            max_y = np.max(left_eye_region[: ,1])
-            eye=frame[min_y:max_y , min_x:max_x]
-            
-            min_xr = np.min(right_eye_region[: ,0])
-            max_xr = np.max(right_eye_region[: ,0])
-            min_yr = np.min(right_eye_region[: ,1])
-            max_yr = np.max(right_eye_region[: ,1])
-            reye=frame[min_yr:max_yr , min_xr:max_xr]
-
-            rgray_eye = cv2.cvtColor(reye,cv2.COLOR_BGR2GRAY)
-            lgray_eye = cv2.cvtColor(eye,cv2.COLOR_BGR2GRAY)
-           # gray_eye = cv2.GaussianBlur(gray_eye,(1,1),0)
-
-            _,thershold = cv2.threshold(lgray_eye,clearence,255,cv2.THRESH_BINARY)
-            _=thersholdr = cv2.threshold(rgray_eye,clearence,255,cv2.THRESH_BINARY)
-
-            eye=cv2.resize(eye,None,fx=10,fy=10)
-            reye=cv2.resize(reye,None,fx=10,fy=10)
-
-            thershold=cv2.resize(thershold,None,fx=10,fy=10)
-            #thersholdr=cv2.resize(thersholdr,None,fx=10,fy=10)
-
-            heiht,width,_=frame.shape
-            mask = np.zeros((heiht,width),np.uint8)
-           
-            cv2.polylines(mask,[left_eye_region],True,255,2)
-            cv2.fillPoly(mask,[left_eye_region],255)
-            cv2.polylines(mask,[right_eye_region],True,255,2)
-            cv2.fillPoly(mask,[right_eye_region],255)
-            left_eye = cv2.bitwise_and(grayScale,grayScale,mask=mask)
-
-            left_eye_frame = left_eye[min_y:max_y , min_x:max_x]
-            right_eye_frame = left_eye[min_yr:max_yr , min_xr:max_xr]
-            _,Lthershold = cv2.threshold(left_eye_frame,clearence,255,cv2.THRESH_BINARY)
-            h,w = Lthershold.shape
-            Lleft_side_ther = Lthershold[0:h,0:int(w/2)]
-            Lright_side_ther = Lthershold[0:h,int(w/2):width]
-            Lleft_side_ther=cv2.resize(Lleft_side_ther,None,fx=10,fy=10)
-            Lright_side_ther=cv2.resize(Lright_side_ther,None,fx=10,fy=10)
-            L_left_side_one=np.count_nonzero(Lleft_side_ther)
-            L_right_side_one=np.count_nonzero(Lright_side_ther)
-
-            cv2.putText(frame,"L:"+str(L_left_side_one),(50,170),cv2.FONT_HERSHEY_SIMPLEX,2,(255,0,0),3)
-            cv2.putText(frame,"R:"+str(L_right_side_one),(50,250),cv2.FONT_HERSHEY_SIMPLEX,2,(255,0,0),3)
+        else:
+            cv2.putText(frame, "LEFT", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            x-=speed
+        cv2.putText(frame, str(vertical_gaze_ratio), (200, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+        if vertical_gaze_ratio <0.4:
+            cv2.putText(frame, "Top", (200, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            y-=speed
+        elif vertical_gaze_ratio>=1:
+            cv2.putText(frame, "Bottom", (200, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
+            y+=speed
+        else:
+            y=y
 
 
-            _,Rthershold = cv2.threshold(right_eye_frame,clearence,255,cv2.THRESH_BINARY)
-            left_eye_frame=cv2.resize(left_eye_frame,None,fx=10,fy=10)
-            Lthershold=cv2.resize(Lthershold,None,fx=10,fy=10)
-            right_eye_frame=cv2.resize(right_eye_frame,None,fx=10,fy=10)
-            Rthershold=cv2.resize(Rthershold,None,fx=10,fy=10)
-            cv2.imshow("Lmask",left_eye)
-            cv2.imshow("Frame",frame)
-            cv2.imshow("left eye",left_eye_frame)
-            cv2.imshow("L_left_side",Lleft_side_ther)
-            cv2.imshow("R_left_side",Lright_side_ther)
-            #cv2.imshow("left_eye_Thershold",Lthershold)
-            #cv2.imshow("right eye",right_eye_frame)
-            #cv2.imshow("right_eye_Thershold",Rthershold)
-           # cv2.imshow("FrameGray",grayScale)
-
-
-
-    key = cv2.waitKey(1)
+        pyautogui.moveTo(x,y)
+    cv2.imshow("Frame",frame)
+    cv2.imshow("GrayFrame",gray_scale_frame)
+    key = cv2.waitKey(27)
     if(key==27):
         break
 cap.release()
